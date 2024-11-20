@@ -1,0 +1,112 @@
+//TEDBDF41 JOB (EDWB, CC4508),
+                CMS CLAIMS",
+                MSGLEVEL=1,
+                MSGCLASS=X,
+				CLASS=O,
+				REGION=OM
+//*
+JOBPARM SYSAFF=SYSE			
+*******************************************************************
+JOB DESCRIPTION:
+  *============================================================*   *
+    This process is part of the EDW EUAL CMS FHIR outbound.
+    This is for the EOB OP (Out Patient) subject area.
+     This is a Teradata process that is controlled by a 
+	 driver table created in a previous job and produces
+	 a Teradata work table.
+     Job is completely rerunnable even if the BTEQ fails in middle.
+	 
+  *=================================================================*  *
+ SUBSYSTEM:         EDW 
+ JOB DEPENDENCIES:  PEDWDF40
+ JOBS INVOKED:      PELWDE45
+ FREQUENCY:         DAILY
+ EARLY START TIME:  00:00
+ IMPACT IF DELAYED:
+ PRIMARY ANALYST:   ON CALL LIST "TEST.EDW.ONCALL.DATA"
+ / SPECIAL RESTART CONSIDERATIONS: job is completely rerunnable.
+                                   job requires Teradata resources.
+************************************************************************
+                          CHANGE LOG
+DATE        ANALYST       PR       DESCRIPTION
+2021-04-13  URANKER    000001     GENESIS
+************************************************************************
+
+JOBLIB      DD DSN-TDBS.DB2.DBC.APPLOAD, DISP-SHR
+             DD DSN-TDBS.DB2.DBC.TRLOAD, DISP-SHR
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+set the job environment variable
+      ENVENDEVOR - ENVIRONMENT
+	
+/ NOTE: ALWAYS point to PROD unless there are RELEASE changes!!
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+set  ENV='PROD'
+SET	 ENVB='CEND'
+SET DATALIB= 'TEDWO.EDW.QA.J.DATA'
+SET DATALIB1=' TEOWO, LIDNZ22.JUN2021.DATA.CMS.PROD'
+SET DATALIB1='TEDWO.LIDNZ2Z.JUN2021.DATA.CMS'
+SET DATALIB1='TEDWO.LIDNZ2Z.JUN2021.DATA.CMS'
+SET DATALIB1='ENDEVOR.PROD.STAGE2.DATA'
+SET DATALIB2='TEDW0.LIDBNX5.DATA'
+
+
+*******************************************************
+ *============================================================*
+                       EDW EUAL Script Converter
+       convert EUAL BTEQ script to execute in QA environment
+ *=============================================================*
+
+STEP005 EXEC SASTDBC
+FROMTO  DD DSN=4DATALIB. (EDWEUPO2), DISP-SHR
+SCRPTIN DD DSN=4DATALIB2. (EDWFB01C),
+
+        DISP-SHR
+SCRPTOUT  DD DSN=&&TEMP,
+          DISP(, PASS, DELETE),
+           UNIT SYSDA, SPACE=(TRK, (10,20), RLSE),
+		   DCB=(RECFM=FB, LRECL=80, BLKSIZE=0)
+SASLIST  DD SYSOUT=*
+SASLOG   DD SYSOUT=*
+SYSIN    DD DSN=TEDWO.EDW.QA.J.SAS(EDWCNVIS), DISP-SHR
+
+*-----------------------------------------------------*
+          abend if SAS job step faila.
+*------------------------------------------------------*
+ IF (STEP005.SASP.RC> 00) THEN
+STEP005A EXEC PGM = ABEND
+ENDIF
+
+*-----------------------------------------------------*
+       run EDW EUAL CMS FHIR EOB OP script
+*-----------------------------------------------------*
+STEP010  EXEC PGM=STOMAIN
+SYSPRINT DD SYSOUT=*
+SYSUDOMF DO SYSOUT=(R,, 9511), FCB-DXLL, CHARS-GFC
+SYSABEND DD SYSOUT=*
+SYSIN    DD DSN=TEDWG.EDW.QA.J.DATA (EDWLOGNE), DISP-SHR 
+         DD DSN=&&TEMP, DISP=(OLD, DELETE, DELETE)
+*-----------------------------------------------------*
+ abend if teradata BTEQ fails
+*-----------------------------------------------------*
+ IF (STEP010.BC> 00) THEN
+STEP005A EXEC PGM=ABEND
+ENDIF
+
+*-----------------------------------------------------*
+     run EDW EUAL CMS FHIR EOB OP script
+*-----------------------------------------------------*
+STEP010 EXEC PGM=BTOMAIN
+SYSPRINT DD SYSOUT='
+SYSUDUMP DO SYSOUT =(R..9511), FCB-DXLL, CHARS-GFC
+SYSABEND DD SYSOUT='
+//SYSIN  DD DSN=TEDWO.EDW.QA.J.DATA (EDWLOGNE), DISP=SHR
+          DO DSN=&&TEMP, DISP (OLD, DELETE, DELETE)
+
+*-----------------------------------------------------*
+     abend if teradata BTEQ fails
+*-----------------------------------------------------*
+ IF (STEP010.RC>00) THEN 
+ STEP010A EXEC PGM=ABEND
+ENDIF
